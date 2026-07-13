@@ -17,6 +17,8 @@
     "db:pull": "drizzle-kit pull",
     "db:check": "drizzle-kit check",
     "db:up": "drizzle-kit up",
+    "ingest:parse": "uv run scripts/ingest.py",
+    "ingest:load": "tsx scripts/load.ts",
     "test": "export PLAYWRIGHT=True && pnpm exec playwright test"
   },
   "dependencies": {

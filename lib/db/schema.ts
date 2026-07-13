@@ -2,13 +2,17 @@ import type { InferSelectModel } from "drizzle-orm";
 import {
   boolean,
   foreignKey,
+  index,
+  integer,
   json,
+  jsonb,
   pgTable,
   primaryKey,
   text,
   timestamp,
   uuid,
   varchar,
+  vector,
 } from "drizzle-orm/pg-core";
 
 export const user = pgTable("User", {
@@ -134,3 +138,48 @@ export const stream = pgTable(
 );
 
 export type Stream = InferSelectModel<typeof stream>;
+
+// --- Grounded RAG corpus (Egyptology/Nubiology books) ---
+// See docs/tdd-grounded-rag.md §5. Distinct from the artifacts "Document" table
+// above: these hold the ingested source corpus and its embedded chunks.
+
+export const documents = pgTable("documents", {
+  author: text("author"),
+  filename: text("filename").notNull(),
+  fullText: text("fullText").notNull(),
+  id: uuid("id").primaryKey().notNull().defaultRandom(),
+  pageCount: integer("pageCount").notNull(),
+  title: text("title").notNull(),
+  year: integer("year"),
+});
+
+export type CorpusDocument = InferSelectModel<typeof documents>;
+
+// The citation pointer is (documentId, page, charStart–charEnd, bboxes[]).
+// Context is expanded at read time from documents.fullText, so we store a
+// pointer, not a second "larger chunk."
+export const chunks = pgTable(
+  "chunks",
+  {
+    // bboxes: [{ page, x, y, w, h }] as % of page dims — presentational only.
+    bboxes: jsonb("bboxes").notNull(),
+    charEnd: integer("charEnd").notNull(),
+    charStart: integer("charStart").notNull(),
+    chunkIndex: integer("chunkIndex").notNull(),
+    content: text("content").notNull(),
+    // sha256 of content — resumable loads skip chunks already embedded.
+    contentHash: varchar("contentHash", { length: 64 }).notNull(),
+    documentId: uuid("documentId")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    embedding: vector("embedding", { dimensions: 1536 }),
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    page: integer("page").notNull(),
+  },
+  (table) => ({
+    documentIdx: index("chunks_document_idx").on(table.documentId),
+    hashIdx: index("chunks_content_hash_idx").on(table.contentHash),
+  })
+);
+
+export type CorpusChunk = InferSelectModel<typeof chunks>;
