@@ -1,11 +1,11 @@
-export const DEFAULT_CHAT_MODEL = "moonshotai/kimi-k2.5";
+export const DEFAULT_CHAT_MODEL = "anthropic/claude-sonnet-5";
 
 export const titleModel = {
   description: "Fast model for title generation",
-  gatewayOrder: ["fireworks", "bedrock"],
-  id: "moonshotai/kimi-k2.5",
-  name: "Kimi K2.5",
-  provider: "moonshotai",
+  gatewayOrder: ["anthropic"],
+  id: "anthropic/claude-haiku-4.5",
+  name: "Claude Haiku 4.5",
+  provider: "anthropic",
 };
 
 export type ModelCapabilities = {
@@ -25,6 +25,18 @@ export type ChatModel = {
 
 export const chatModels: ChatModel[] = [
   {
+    description: "Anthropic's most capable general-purpose model",
+    id: "anthropic/claude-sonnet-5",
+    name: "Claude Sonnet 5",
+    provider: "anthropic",
+  },
+  {
+    description: "Fast, low-cost Anthropic model with tool use",
+    id: "anthropic/claude-haiku-4.5",
+    name: "Claude Haiku 4.5",
+    provider: "anthropic",
+  },
+  {
     description: "Fast and capable model with tool use",
     gatewayOrder: ["bedrock", "deepinfra"],
     id: "deepseek/deepseek-v3.2",
@@ -33,7 +45,9 @@ export const chatModels: ChatModel[] = [
   },
   {
     description: "Moonshot AI flagship model",
-    gatewayOrder: ["fireworks", "bedrock"],
+    // fireworks 404s on this model and bedrock streams empty text deltas
+    // after tool calls — keep both out of the order.
+    gatewayOrder: ["moonshotai", "baseten"],
     id: "moonshotai/kimi-k2.5",
     name: "Kimi K2.5",
     provider: "moonshotai",
