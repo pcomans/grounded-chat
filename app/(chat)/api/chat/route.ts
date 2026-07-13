@@ -29,8 +29,8 @@ import { getWeather } from "@/lib/ai/tools/get-weather";
 import { createProvideCitations } from "@/lib/ai/tools/provide-citations";
 import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
 import {
-  type CorpusSearchResult,
   createSearchCorpus,
+  type RetrievedChunk,
 } from "@/lib/ai/tools/search-corpus";
 import { updateDocument } from "@/lib/ai/tools/update-document";
 import {
@@ -221,7 +221,7 @@ export async function POST(request: Request) {
         // provideCitations validates against this so a hallucinated
         // chunkId can never reach the client (PRD: "no citation ID is
         // invented").
-        const retrievedChunks = new Map<string, CorpusSearchResult>();
+        const retrievedChunks = new Map<string, RetrievedChunk>();
 
         const clearHealthCheckTimer = () => {
           if (healthCheckTimer) {

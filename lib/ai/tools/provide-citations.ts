@@ -1,8 +1,8 @@
 import { tool } from "ai";
 import { z } from "zod";
-import type { CorpusSearchResult } from "./search-corpus";
+import type { RetrievedChunk } from "./search-corpus";
 
-export type ResolvedCitation = CorpusSearchResult & {
+export type ResolvedCitation = RetrievedChunk & {
   marker: number;
   excerpt: string | undefined;
 };
@@ -10,7 +10,7 @@ export type ResolvedCitation = CorpusSearchResult & {
 export const createProvideCitations = ({
   getChunk,
 }: {
-  getChunk: (chunkId: string) => CorpusSearchResult | undefined;
+  getChunk: (chunkId: string) => RetrievedChunk | undefined;
 }) =>
   tool({
     description:

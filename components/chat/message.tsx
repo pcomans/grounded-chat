@@ -1,6 +1,8 @@
 "use client";
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { useCallback } from "react";
+import { usePdfViewer } from "@/hooks/use-pdf-viewer";
+import type { ResolvedCitation } from "@/lib/ai/tools/provide-citations";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
 import { cn, sanitizeText } from "@/lib/utils";
@@ -110,6 +112,19 @@ const PurePreviewMessage = ({
   );
 
   useDataStream();
+  const { setPdfViewer } = usePdfViewer();
+  const handleOpenCitation = useCallback(
+    (citation: ResolvedCitation) => {
+      setPdfViewer({
+        bboxes: citation.bboxes,
+        documentId: citation.documentId,
+        documentTitle: citation.docTitle,
+        isVisible: true,
+        page: citation.page,
+      });
+    },
+    [setPdfViewer]
+  );
 
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
@@ -265,7 +280,10 @@ const PurePreviewMessage = ({
 
       return (
         <div className="w-full" key={toolCallId}>
-          <Citations citations={part.output.citations} />
+          <Citations
+            citations={part.output.citations}
+            onOpen={handleOpenCitation}
+          />
         </div>
       );
     }
