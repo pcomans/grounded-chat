@@ -8,6 +8,7 @@
     "start": "next start",
     "check": "ultracite check",
     "fix": "ultracite fix",
+    "typecheck": "tsc --noEmit",
     "prepare": "husky",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "npx tsx lib/db/migrate.ts",
