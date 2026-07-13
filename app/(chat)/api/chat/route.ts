@@ -13,6 +13,7 @@ import { after } from "next/server";
 import { createResumableStreamContext } from "resumable-stream";
 import { auth, type UserType } from "@/app/(auth)/auth";
 import { entitlementsByUserType } from "@/lib/ai/entitlements";
+import { flushLangSmith } from "@/lib/ai/langsmith";
 import {
   allowedModelIds,
   chatModels,
@@ -407,6 +408,10 @@ export async function POST(request: Request) {
       },
       originalMessages: isToolApprovalFlow ? uiMessages : undefined,
     });
+
+    // Flush LangSmith traces after the response finishes streaming; otherwise
+    // the serverless function freezes before the SDK's background send fires.
+    after(flushLangSmith);
 
     return createUIMessageStreamResponse({
       async consumeSseStream({ stream: sseStream }) {
