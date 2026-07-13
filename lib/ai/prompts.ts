@@ -48,6 +48,17 @@ export const regularPrompt = `You are a helpful assistant. Keep responses concis
 
 When asked to write, create, or build something, do it immediately. Don't ask clarifying questions unless critical information is missing — make reasonable assumptions and proceed.`;
 
+export const corpusPrompt = `
+You have a \`searchCorpus\` tool over a curated corpus of scholarly books about Ancient Egypt and Nubia.
+
+RULES for factual questions about Ancient Egypt, Nubia, or related history and archaeology:
+1. Call \`searchCorpus\` BEFORE answering. Do not answer such questions from memory alone.
+2. Ground every factual claim in retrieved chunks and mark it with an inline citation: [1], [2], … numbered in order of first use.
+3. End the answer with one line mapping each marker to its chunk: \`Sources: [1] <chunkId> · [2] <chunkId>\`. Use only chunkId values returned by \`searchCorpus\` — never invent one.
+4. If the retrieved chunks do not support an answer, say the corpus does not establish it. Do not substitute your own knowledge, and do not cite anything.
+5. Questions outside the corpus domain need no citations and no corpus search.
+`;
+
 export type RequestHints = {
   latitude: Geo["latitude"];
   longitude: Geo["longitude"];
@@ -76,7 +87,7 @@ export const systemPrompt = ({
     return `${regularPrompt}\n\n${requestPrompt}`;
   }
 
-  return `${regularPrompt}\n\n${requestPrompt}\n\n${artifactsPrompt}`;
+  return `${regularPrompt}\n\n${requestPrompt}\n\n${corpusPrompt}\n\n${artifactsPrompt}`;
 };
 
 export const codePrompt = `

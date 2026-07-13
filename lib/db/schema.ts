@@ -141,9 +141,9 @@ export type Stream = InferSelectModel<typeof stream>;
 
 // --- Grounded RAG corpus (Egyptology/Nubiology books) ---
 // See docs/tdd-grounded-rag.md §5. Distinct from the artifacts "Document" table
-// above: these hold the ingested source corpus and its embedded chunks.
-
-export const documents = pgTable("documents", {
+// above: these hold the ingested source corpus and its embedded chunks. Tables
+// are created by migration 0001 and populated by scripts/ingest.py + load.ts.
+export const corpusDocument = pgTable("documents", {
   author: text("author"),
   filename: text("filename").notNull(),
   fullText: text("fullText").notNull(),
@@ -153,16 +153,24 @@ export const documents = pgTable("documents", {
   year: integer("year"),
 });
 
-export type CorpusDocument = InferSelectModel<typeof documents>;
+export type CorpusDocument = InferSelectModel<typeof corpusDocument>;
+
+// bboxes: block rects as % of page dims — presentational only.
+export type ChunkBbox = {
+  page: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
 
 // The citation pointer is (documentId, page, charStart–charEnd, bboxes[]).
-// Context is expanded at read time from documents.fullText, so we store a
+// Context is expanded at read time from corpusDocument.fullText, so we store a
 // pointer, not a second "larger chunk."
-export const chunks = pgTable(
+export const corpusChunk = pgTable(
   "chunks",
   {
-    // bboxes: [{ page, x, y, w, h }] as % of page dims — presentational only.
-    bboxes: jsonb("bboxes").notNull(),
+    bboxes: jsonb("bboxes").$type<ChunkBbox[]>().notNull(),
     charEnd: integer("charEnd").notNull(),
     charStart: integer("charStart").notNull(),
     chunkIndex: integer("chunkIndex").notNull(),
@@ -171,15 +179,15 @@ export const chunks = pgTable(
     contentHash: varchar("contentHash", { length: 64 }).notNull(),
     documentId: uuid("documentId")
       .notNull()
-      .references(() => documents.id, { onDelete: "cascade" }),
+      .references(() => corpusDocument.id, { onDelete: "cascade" }),
     embedding: vector("embedding", { dimensions: 1536 }),
     id: uuid("id").primaryKey().notNull().defaultRandom(),
     page: integer("page").notNull(),
   },
   (table) => ({
+    contentHashIdx: index("chunks_content_hash_idx").on(table.contentHash),
     documentIdx: index("chunks_document_idx").on(table.documentId),
-    hashIdx: index("chunks_content_hash_idx").on(table.contentHash),
   })
 );
 
-export type CorpusChunk = InferSelectModel<typeof chunks>;
+export type CorpusChunk = InferSelectModel<typeof corpusChunk>;

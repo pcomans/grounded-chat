@@ -21,8 +21,9 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { EMBED_INPUT_TYPE, EMBEDDING_MODEL_ID } from "../lib/ai/embedding";
 import {
-  chunks as chunksTable,
-  documents as documentsTable,
+  type ChunkBbox,
+  corpusChunk as chunksTable,
+  corpusDocument as documentsTable,
 } from "../lib/db/schema";
 
 config({ path: ".env.local" });
@@ -49,7 +50,7 @@ type ChunkRecord = {
   content: string;
   charStart: number;
   charEnd: number;
-  bboxes: unknown;
+  bboxes: ChunkBbox[];
   contentHash: string;
 };
 
