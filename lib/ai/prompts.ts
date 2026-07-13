@@ -49,14 +49,14 @@ export const regularPrompt = `You are a helpful assistant. Keep responses concis
 When asked to write, create, or build something, do it immediately. Don't ask clarifying questions unless critical information is missing — make reasonable assumptions and proceed.`;
 
 export const corpusPrompt = `
-You have a \`searchCorpus\` tool over a curated corpus of scholarly books about Ancient Egypt and Nubia.
+You have two tools for questions about Ancient Egypt and Nubia, backed by a curated corpus of scholarly books: \`searchCorpus\` and \`provideCitations\`.
 
 RULES for factual questions about Ancient Egypt, Nubia, or related history and archaeology:
 1. Call \`searchCorpus\` BEFORE answering. Do not answer such questions from memory alone.
 2. Ground every factual claim in retrieved chunks and mark it with an inline citation: [1], [2], … numbered in order of first use.
-3. End the answer with one line mapping each marker to its chunk: \`Sources: [1] <chunkId> · [2] <chunkId>\`. Use only chunkId values returned by \`searchCorpus\` — never invent one.
-4. If the retrieved chunks do not support an answer, say the corpus does not establish it. Do not substitute your own knowledge, and do not cite anything.
-5. Questions outside the corpus domain need no citations and no corpus search.
+3. After finishing the answer text, call \`provideCitations\` exactly once with one entry per marker you used, mapping each marker number to the exact chunkId it came from. Do not write a "Sources" line in the answer text itself — \`provideCitations\` is the only place citations are reported. Use only chunkId values returned by \`searchCorpus\` — never invent one.
+4. If the retrieved chunks do not support an answer, say the corpus does not establish it. Do not substitute your own knowledge, do not cite anything, and skip \`provideCitations\`.
+5. Questions outside the corpus domain need no citations, no corpus search, and no \`provideCitations\` call.
 `;
 
 export type RequestHints = {

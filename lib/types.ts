@@ -3,8 +3,9 @@ import { z } from "zod";
 import type { ArtifactKind } from "@/components/chat/artifact";
 import type { createDocument } from "./ai/tools/create-document";
 import type { getWeather } from "./ai/tools/get-weather";
+import type { createProvideCitations } from "./ai/tools/provide-citations";
 import type { requestSuggestions } from "./ai/tools/request-suggestions";
-import type { searchCorpus } from "./ai/tools/search-corpus";
+import type { createSearchCorpus } from "./ai/tools/search-corpus";
 import type { updateDocument } from "./ai/tools/update-document";
 import type { Suggestion } from "./db/schema";
 
@@ -20,7 +21,10 @@ type updateDocumentTool = InferUITool<ReturnType<typeof updateDocument>>;
 type requestSuggestionsTool = InferUITool<
   ReturnType<typeof requestSuggestions>
 >;
-type searchCorpusTool = InferUITool<typeof searchCorpus>;
+type searchCorpusTool = InferUITool<ReturnType<typeof createSearchCorpus>>;
+type provideCitationsTool = InferUITool<
+  ReturnType<typeof createProvideCitations>
+>;
 
 export type ChatTools = {
   getWeather: weatherTool;
@@ -28,6 +32,7 @@ export type ChatTools = {
   updateDocument: updateDocumentTool;
   requestSuggestions: requestSuggestionsTool;
   searchCorpus: searchCorpusTool;
+  provideCitations: provideCitationsTool;
 };
 
 export type WaitingStatusData = {

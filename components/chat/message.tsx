@@ -13,6 +13,7 @@ import {
   ToolInput,
   ToolOutput,
 } from "../ai-elements/tool";
+import { Citations } from "./citations";
 import { useDataStream } from "./data-stream-provider";
 import { DocumentToolResult } from "./document";
 import { DocumentPreview } from "./document-preview";
@@ -253,6 +254,24 @@ const PurePreviewMessage = ({
           </Tool>
         </div>
       );
+    }
+
+    if (type === "tool-provideCitations") {
+      const { toolCallId, state } = part;
+
+      if (state !== "output-available") {
+        return null;
+      }
+
+      return (
+        <div className="w-full" key={toolCallId}>
+          <Citations citations={part.output.citations} />
+        </div>
+      );
+    }
+
+    if (type === "tool-searchCorpus") {
+      return null;
     }
 
     if (type === "tool-createDocument") {

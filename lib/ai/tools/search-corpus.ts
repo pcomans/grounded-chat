@@ -23,25 +23,32 @@ export type CorpusSearchResult = {
   content: string;
 };
 
-export const searchCorpus = tool({
-  description:
-    "Search a curated corpus of scholarly books about Ancient Egypt and Nubia (history, archaeology, gold mining, fortifications, Kerma and Kush). Returns the most relevant text chunks with their source book and page. Use this before answering any factual question about the corpus domain.",
-  execute: async ({ query }): Promise<CorpusSearchResult[]> => {
-    const embedding = await embedQuery(query);
-    const rows = await searchChunksByEmbedding({ embedding, limit: TOP_K });
+export const createSearchCorpus = ({
+  onResults,
+}: {
+  onResults: (results: CorpusSearchResult[]) => void;
+}) =>
+  tool({
+    description:
+      "Search a curated corpus of scholarly books about Ancient Egypt and Nubia (history, archaeology, gold mining, fortifications, Kerma and Kush). Returns the most relevant text chunks with their source book and page. Use this before answering any factual question about the corpus domain.",
+    execute: async ({ query }): Promise<CorpusSearchResult[]> => {
+      const embedding = await embedQuery(query);
+      const rows = await searchChunksByEmbedding({ embedding, limit: TOP_K });
+      const results = rows.map(({ chunkId, docTitle, page, content }) => ({
+        chunkId,
+        content,
+        docTitle,
+        page,
+      }));
 
-    return rows.map(({ chunkId, docTitle, page, content }) => ({
-      chunkId,
-      content,
-      docTitle,
-      page,
-    }));
-  },
-  inputSchema: z.object({
-    query: z
-      .string()
-      .describe(
-        "Natural-language search query, e.g. a question or key phrase about Ancient Egypt or Nubia"
-      ),
-  }),
-});
+      onResults(results);
+      return results;
+    },
+    inputSchema: z.object({
+      query: z
+        .string()
+        .describe(
+          "Natural-language search query, e.g. a question or key phrase about Ancient Egypt or Nubia"
+        ),
+    }),
+  });

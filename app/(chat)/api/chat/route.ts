@@ -25,8 +25,12 @@ import { getLanguageModel } from "@/lib/ai/providers";
 import { createDocument } from "@/lib/ai/tools/create-document";
 import { editDocument } from "@/lib/ai/tools/edit-document";
 import { getWeather } from "@/lib/ai/tools/get-weather";
+import { createProvideCitations } from "@/lib/ai/tools/provide-citations";
 import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
-import { searchCorpus } from "@/lib/ai/tools/search-corpus";
+import {
+  type CorpusSearchResult,
+  createSearchCorpus,
+} from "@/lib/ai/tools/search-corpus";
 import { updateDocument } from "@/lib/ai/tools/update-document";
 import {
   isLangSmithTracingEnabled,
@@ -212,6 +216,12 @@ export async function POST(request: Request) {
         let hasModelActivity = false;
         let healthCheckTimer: ReturnType<typeof setTimeout> | undefined;
 
+        // Chunks retrieved by searchCorpus this turn, keyed by chunkId.
+        // provideCitations validates against this so a hallucinated
+        // chunkId can never reach the client (PRD: "no citation ID is
+        // invented").
+        const retrievedChunks = new Map<string, CorpusSearchResult>();
+
         const clearHealthCheckTimer = () => {
           if (healthCheckTimer) {
             clearTimeout(healthCheckTimer);
@@ -277,6 +287,7 @@ export async function POST(request: Request) {
               : [
                   "getWeather",
                   "searchCorpus",
+                  "provideCitations",
                   "createDocument",
                   "editDocument",
                   "updateDocument",
@@ -307,7 +318,7 @@ export async function POST(request: Request) {
               openai: { reasoningEffort: modelConfig.reasoningEffort },
             }),
           },
-          stopWhen: isStepCount(5),
+          stopWhen: isStepCount(6),
           telemetry: {
             functionId: "stream-text",
             isEnabled: isProductionEnvironment || isLangSmithTracingEnabled,
@@ -320,12 +331,21 @@ export async function POST(request: Request) {
             }),
             editDocument: editDocument({ dataStream, session }),
             getWeather,
+            provideCitations: createProvideCitations({
+              getChunk: (chunkId) => retrievedChunks.get(chunkId),
+            }),
             requestSuggestions: requestSuggestions({
               dataStream,
               modelId: chatModel,
               session,
             }),
-            searchCorpus,
+            searchCorpus: createSearchCorpus({
+              onResults: (results) => {
+                for (const chunk of results) {
+                  retrievedChunks.set(chunk.chunkId, chunk);
+                }
+              },
+            }),
             updateDocument: updateDocument({
               dataStream,
               modelId: chatModel,
