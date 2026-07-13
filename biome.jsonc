@@ -52,5 +52,22 @@
         "useTopLevelRegex": "off"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      // Offline ingest scripts: sequential awaits (rate-controlled batching) and
+      // plain index loops are intentional here, not app hot paths.
+      "includes": ["scripts/**"],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noAwaitInLoops": "off"
+          },
+          "style": {
+            "noIncrementDecrement": "off"
+          }
+        }
+      }
+    }
+  ]
 }

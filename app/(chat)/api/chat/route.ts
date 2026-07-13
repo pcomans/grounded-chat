@@ -28,7 +28,10 @@ import { getWeather } from "@/lib/ai/tools/get-weather";
 import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
 import { searchCorpus } from "@/lib/ai/tools/search-corpus";
 import { updateDocument } from "@/lib/ai/tools/update-document";
-import { isProductionEnvironment } from "@/lib/constants";
+import {
+  isLangSmithTracingEnabled,
+  isProductionEnvironment,
+} from "@/lib/constants";
 import {
   createStreamId,
   deleteChatById,
@@ -307,7 +310,7 @@ export async function POST(request: Request) {
           stopWhen: isStepCount(5),
           telemetry: {
             functionId: "stream-text",
-            isEnabled: isProductionEnvironment,
+            isEnabled: isProductionEnvironment || isLangSmithTracingEnabled,
           },
           tools: {
             createDocument: createDocument({

@@ -139,8 +139,10 @@ export const stream = pgTable(
 
 export type Stream = InferSelectModel<typeof stream>;
 
-// RAG corpus tables (docs/tdd-grounded-rag.md §5). Tables already exist on the
-// shared Neon database; this schema mirrors them for typed access.
+// --- Grounded RAG corpus (Egyptology/Nubiology books) ---
+// See docs/tdd-grounded-rag.md §5. Distinct from the artifacts "Document" table
+// above: these hold the ingested source corpus and its embedded chunks. Tables
+// are created by migration 0001 and populated by scripts/ingest.py + load.ts.
 export const corpusDocument = pgTable("documents", {
   author: text("author"),
   filename: text("filename").notNull(),
@@ -153,6 +155,7 @@ export const corpusDocument = pgTable("documents", {
 
 export type CorpusDocument = InferSelectModel<typeof corpusDocument>;
 
+// bboxes: block rects as % of page dims — presentational only.
 export type ChunkBbox = {
   page: number;
   x: number;
@@ -161,6 +164,9 @@ export type ChunkBbox = {
   h: number;
 };
 
+// The citation pointer is (documentId, page, charStart–charEnd, bboxes[]).
+// Context is expanded at read time from corpusDocument.fullText, so we store a
+// pointer, not a second "larger chunk."
 export const corpusChunk = pgTable(
   "chunks",
   {
@@ -169,10 +175,11 @@ export const corpusChunk = pgTable(
     charStart: integer("charStart").notNull(),
     chunkIndex: integer("chunkIndex").notNull(),
     content: text("content").notNull(),
-    contentHash: varchar("contentHash").notNull(),
+    // sha256 of content — resumable loads skip chunks already embedded.
+    contentHash: varchar("contentHash", { length: 64 }).notNull(),
     documentId: uuid("documentId")
       .notNull()
-      .references(() => corpusDocument.id),
+      .references(() => corpusDocument.id, { onDelete: "cascade" }),
     embedding: vector("embedding", { dimensions: 1536 }),
     id: uuid("id").primaryKey().notNull().defaultRandom(),
     page: integer("page").notNull(),
