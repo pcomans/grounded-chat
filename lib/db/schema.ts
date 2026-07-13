@@ -2,13 +2,17 @@ import type { InferSelectModel } from "drizzle-orm";
 import {
   boolean,
   foreignKey,
+  index,
+  integer,
   json,
+  jsonb,
   pgTable,
   primaryKey,
   text,
   timestamp,
   uuid,
   varchar,
+  vector,
 } from "drizzle-orm/pg-core";
 
 export const user = pgTable("User", {
@@ -134,3 +138,49 @@ export const stream = pgTable(
 );
 
 export type Stream = InferSelectModel<typeof stream>;
+
+// RAG corpus tables (docs/tdd-grounded-rag.md §5). Tables already exist on the
+// shared Neon database; this schema mirrors them for typed access.
+export const corpusDocument = pgTable("documents", {
+  author: text("author"),
+  filename: text("filename").notNull(),
+  fullText: text("fullText").notNull(),
+  id: uuid("id").primaryKey().notNull().defaultRandom(),
+  pageCount: integer("pageCount").notNull(),
+  title: text("title").notNull(),
+  year: integer("year"),
+});
+
+export type CorpusDocument = InferSelectModel<typeof corpusDocument>;
+
+export type ChunkBbox = {
+  page: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
+
+export const corpusChunk = pgTable(
+  "chunks",
+  {
+    bboxes: jsonb("bboxes").$type<ChunkBbox[]>().notNull(),
+    charEnd: integer("charEnd").notNull(),
+    charStart: integer("charStart").notNull(),
+    chunkIndex: integer("chunkIndex").notNull(),
+    content: text("content").notNull(),
+    contentHash: varchar("contentHash").notNull(),
+    documentId: uuid("documentId")
+      .notNull()
+      .references(() => corpusDocument.id),
+    embedding: vector("embedding", { dimensions: 1536 }),
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+    page: integer("page").notNull(),
+  },
+  (table) => ({
+    contentHashIdx: index("chunks_content_hash_idx").on(table.contentHash),
+    documentIdx: index("chunks_document_idx").on(table.documentId),
+  })
+);
+
+export type CorpusChunk = InferSelectModel<typeof corpusChunk>;

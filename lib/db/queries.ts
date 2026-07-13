@@ -3,14 +3,17 @@ import "server-only";
 import {
   and,
   asc,
+  cosineDistance,
   count,
   desc,
   eq,
   gt,
   gte,
   inArray,
+  isNotNull,
   lt,
   type SQL,
+  sql,
 } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
@@ -21,6 +24,8 @@ import { generateUUID } from "../utils";
 import {
   type Chat,
   chat,
+  corpusChunk,
+  corpusDocument,
   type DBMessage,
   document,
   message,
@@ -585,6 +590,38 @@ export async function getStreamIdsByChatId({ chatId }: { chatId: string }) {
       .execute();
 
     return streamIds.map(({ id }) => id);
+  } catch (error) {
+    throw new ChatbotError("bad_request:database", { cause: error });
+  }
+}
+
+export async function searchChunksByEmbedding({
+  embedding,
+  limit = 8,
+}: {
+  embedding: number[];
+  limit?: number;
+}) {
+  try {
+    // Brute-force cosine scan, no vector index — ~3.5k rows (TDD §7).
+    const similarity = sql<number>`1 - (${cosineDistance(
+      corpusChunk.embedding,
+      embedding
+    )})`;
+
+    return await db
+      .select({
+        chunkId: corpusChunk.id,
+        content: corpusChunk.content,
+        docTitle: corpusDocument.title,
+        page: corpusChunk.page,
+        similarity,
+      })
+      .from(corpusChunk)
+      .innerJoin(corpusDocument, eq(corpusChunk.documentId, corpusDocument.id))
+      .where(isNotNull(corpusChunk.embedding))
+      .orderBy(desc(similarity))
+      .limit(limit);
   } catch (error) {
     throw new ChatbotError("bad_request:database", { cause: error });
   }
