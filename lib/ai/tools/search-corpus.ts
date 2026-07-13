@@ -2,6 +2,7 @@ import { embed, gateway, tool } from "ai";
 import { z } from "zod";
 import { EMBED_INPUT_TYPE, EMBEDDING_MODEL_ID } from "@/lib/ai/embedding";
 import { searchChunksByEmbedding } from "@/lib/db/queries";
+import type { ChunkBbox } from "@/lib/db/schema";
 
 const TOP_K = 8;
 
@@ -16,6 +17,8 @@ export async function embedQuery(query: string): Promise<number[]> {
   return embedding;
 }
 
+// What the model sees when it calls searchCorpus — kept lean so retrieved
+// bboxes don't bloat every subsequent turn's context.
 export type CorpusSearchResult = {
   chunkId: string;
   docTitle: string;
@@ -23,10 +26,19 @@ export type CorpusSearchResult = {
   content: string;
 };
 
+// Full row, including PDF-viewer data (documentId/filename/bboxes). Only
+// held server-side for provideCitations to resolve — never sent to the
+// model as part of the searchCorpus tool result.
+export type RetrievedChunk = CorpusSearchResult & {
+  documentId: string;
+  filename: string;
+  bboxes: ChunkBbox[];
+};
+
 export const createSearchCorpus = ({
   onResults,
 }: {
-  onResults: (results: CorpusSearchResult[]) => void;
+  onResults: (results: RetrievedChunk[]) => void;
 }) =>
   tool({
     description:
@@ -34,15 +46,15 @@ export const createSearchCorpus = ({
     execute: async ({ query }): Promise<CorpusSearchResult[]> => {
       const embedding = await embedQuery(query);
       const rows = await searchChunksByEmbedding({ embedding, limit: TOP_K });
-      const results = rows.map(({ chunkId, docTitle, page, content }) => ({
+
+      onResults(rows);
+
+      return rows.map(({ chunkId, docTitle, page, content }) => ({
         chunkId,
         content,
         docTitle,
         page,
       }));
-
-      onResults(results);
-      return results;
     },
     inputSchema: z.object({
       query: z

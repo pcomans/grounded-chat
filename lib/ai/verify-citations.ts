@@ -24,7 +24,14 @@ export type CitationVerdict = {
   status: CitationVerdictStatus;
   // One sentence, present only when status !== "supported".
   note?: string;
+  // Verbatim spans of the cited chunk that are actually relevant to the answer,
+  // validated as exact substrings of the chunk (empty when nothing is
+  // relevant). The UI highlights these and centers the truncated chunk on them.
+  highlights?: string[];
 };
+
+// Cap so a verifier can't return the whole chunk as one "highlight".
+const MAX_HIGHLIGHTS = 4;
 
 export type CitationToVerify = {
   chunkId: string;
@@ -41,6 +48,11 @@ const verdictSchema = z.object({
         chunkId: z
           .string()
           .describe("The chunkId of the citation being judged"),
+        highlights: z
+          .array(z.string())
+          .describe(
+            "The specific verbatim span(s) copied character-for-character from THIS citation's cited excerpt that are actually relevant to the answer's claim. Copy exactly as they appear — do not paraphrase. Return an empty array if no part of the excerpt is genuinely relevant."
+          ),
         note: z
           .string()
           .optional()
@@ -84,6 +96,8 @@ For each citation return exactly one verdict:
 - "not_enough_context": the passage is on-topic but does not, on its own, establish the specific claim the answer attributes to it.
 
 Judge only the relationship between the answer and each source's broader context. Do not use outside knowledge. Return a verdict for every citation, keyed by its chunkId. Add a one-sentence note only when the verdict is not "supported".
+
+For each citation, also return "highlights": the exact verbatim span(s) from that citation's cited excerpt (copied character-for-character, not paraphrased) that are actually relevant to the answer's claim. Prefer the shortest spans that carry the relevance. If no part of the excerpt is genuinely relevant, return an empty array.
 
 Answer being verified:
 """
@@ -131,7 +145,8 @@ export async function verifyCitations({
   // Key verdicts back to the exact citations we asked about. If the model
   // omits one, fall back to not_enough_context — we never upgrade an
   // unjudged citation to "supported".
-  return citations.map(({ chunkId }) => {
+  return citations.map((citation) => {
+    const { chunkId } = citation;
     const v = byId.get(chunkId);
     if (!v) {
       return {
@@ -140,9 +155,18 @@ export async function verifyCitations({
         status: "not_enough_context" as const,
       };
     }
+    // Keep only highlights that are exact substrings of the cited chunk, so a
+    // paraphrased or hallucinated span can never render as source text (same
+    // guard as provideCitations' excerpt validation).
+    const highlights = Array.from(new Set(v.highlights ?? []))
+      .map((h) => h.trim())
+      .filter((h) => h.length > 0 && citation.excerpt.includes(h))
+      .slice(0, MAX_HIGHLIGHTS);
+
     return {
       chunkId,
       ...(v.status === "supported" ? {} : { note: v.note }),
+      ...(highlights.length > 0 ? { highlights } : {}),
       status: v.status,
     };
   });

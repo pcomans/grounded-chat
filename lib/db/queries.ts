@@ -659,6 +659,19 @@ export async function getChunkContextsByIds({
   }
 }
 
+export async function getCorpusDocumentById({ id }: { id: string }) {
+  try {
+    const [selectedDocument] = await db
+      .select()
+      .from(corpusDocument)
+      .where(eq(corpusDocument.id, id));
+
+    return selectedDocument;
+  } catch (error) {
+    throw new ChatbotError("bad_request:database", { cause: error });
+  }
+}
+
 export async function searchChunksByEmbedding({
   embedding,
   limit = 8,
@@ -675,9 +688,12 @@ export async function searchChunksByEmbedding({
 
     return await db
       .select({
+        bboxes: corpusChunk.bboxes,
         chunkId: corpusChunk.id,
         content: corpusChunk.content,
         docTitle: corpusDocument.title,
+        documentId: corpusChunk.documentId,
+        filename: corpusDocument.filename,
         page: corpusChunk.page,
         similarity,
       })

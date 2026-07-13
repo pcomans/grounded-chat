@@ -17,6 +17,7 @@ import {
   useArtifact,
   useArtifactSelector,
 } from "@/hooks/use-artifact";
+import { initialPdfViewerData, usePdfViewer } from "@/hooks/use-pdf-viewer";
 import type { Attachment, ChatMessage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Artifact } from "./artifact";
@@ -25,6 +26,7 @@ import { DataStreamHandler } from "./data-stream-handler";
 import { submitEditedMessage } from "./message-editor";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
+import { PdfViewer } from "./pdf-viewer";
 
 export function ChatShell() {
   const {
@@ -54,6 +56,7 @@ export function ChatShell() {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const isArtifactVisible = useArtifactSelector((state) => state.isVisible);
   const { setArtifact } = useArtifact();
+  const { pdfViewer, setPdfViewer } = usePdfViewer();
 
   const stopRef = useRef(stop);
   stopRef.current = stop;
@@ -64,10 +67,11 @@ export function ChatShell() {
       prevChatIdRef.current = chatId;
       stopRef.current();
       setArtifact(initialArtifactData);
+      setPdfViewer(initialPdfViewerData);
       setEditingMessage(null);
       setAttachments([]);
     }
-  }, [chatId, setArtifact]);
+  }, [chatId, setArtifact, setPdfViewer]);
 
   const handleEditMessage = useCallback(
     (msg: ChatMessage) => {
@@ -116,7 +120,7 @@ export function ChatShell() {
         <div
           className={cn(
             "flex min-w-0 flex-col bg-sidebar transition-[width] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
-            isArtifactVisible ? "w-[40%]" : "w-full"
+            isArtifactVisible || pdfViewer.isVisible ? "w-[40%]" : "w-full"
           )}
         >
           <ChatHeader
@@ -186,6 +190,8 @@ export function ChatShell() {
           stop={stop}
           votes={votes}
         />
+
+        <PdfViewer />
       </div>
 
       <DataStreamHandler />

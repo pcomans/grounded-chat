@@ -13,6 +13,7 @@ import { after } from "next/server";
 import { createResumableStreamContext } from "resumable-stream";
 import { auth, type UserType } from "@/app/(auth)/auth";
 import { entitlementsByUserType } from "@/lib/ai/entitlements";
+import { flushLangSmith } from "@/lib/ai/langsmith";
 import {
   allowedModelIds,
   chatModels,
@@ -31,8 +32,8 @@ import {
 } from "@/lib/ai/tools/provide-citations";
 import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
 import {
-  type CorpusSearchResult,
   createSearchCorpus,
+  type RetrievedChunk,
 } from "@/lib/ai/tools/search-corpus";
 import { updateDocument } from "@/lib/ai/tools/update-document";
 import {
@@ -228,7 +229,7 @@ export async function POST(request: Request) {
         // provideCitations validates against this so a hallucinated
         // chunkId can never reach the client (PRD: "no citation ID is
         // invented").
-        const retrievedChunks = new Map<string, CorpusSearchResult>();
+        const retrievedChunks = new Map<string, RetrievedChunk>();
 
         // The validated citations the model actually reported this turn.
         // Captured server-side so the P1 verifier runs over exactly what
@@ -502,6 +503,10 @@ export async function POST(request: Request) {
       },
       originalMessages: isToolApprovalFlow ? uiMessages : undefined,
     });
+
+    // Flush LangSmith traces after the response finishes streaming; otherwise
+    // the serverless function freezes before the SDK's background send fires.
+    after(flushLangSmith);
 
     return createUIMessageStreamResponse({
       async consumeSseStream({ stream: sseStream }) {
