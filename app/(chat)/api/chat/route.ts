@@ -389,14 +389,23 @@ export async function POST(request: Request) {
         }
 
         // --- P1: in-context citation verification (PRD §03 / TDD §8) ---
-        // Runs after the answer streams. Awaiting result.text ensures the
-        // model finished and provideCitations has fired, so resolvedCitations
-        // is settled. Verdicts ride this same stream — which stays open until
-        // we write them — well under maxDuration. Any failure downgrades the
-        // whole set to `verification_unavailable` rather than dropping cards.
+        // Runs after the answer streams. Awaiting the steps ensures the model
+        // finished and provideCitations has fired, so resolvedCitations is
+        // settled. Verdicts ride this same stream — which stays open until we
+        // write them — well under maxDuration. Any failure downgrades the whole
+        // set to `verification_unavailable` rather than dropping cards.
+        //
+        // Concatenate text across ALL steps: result.text is only the *final*
+        // step's text, which is empty here because the final step is the
+        // provideCitations tool call (the answer prose lives in earlier steps).
         let answerText: string;
         try {
-          answerText = await result.text;
+          const steps = await result.steps;
+          answerText = steps
+            .map((step) => step.text)
+            .filter(Boolean)
+            .join("\n\n")
+            .trim();
         } catch {
           answerText = "";
         }
