@@ -1,6 +1,11 @@
 import { generateDummyPassword } from "./db/utils";
 
 export const isProductionEnvironment = process.env.NODE_ENV === "production";
+
+// LangSmith tracing is opt-in via env (set in Vercel for prod, or locally to
+// verify traces). When on, AI SDK telemetry is emitted even outside production.
+export const isLangSmithTracingEnabled =
+  process.env.LANGSMITH_TRACING === "true";
 export const isDevelopmentEnvironment = process.env.NODE_ENV === "development";
 export const isTestEnvironment = Boolean(
   process.env.PLAYWRIGHT_TEST_BASE_URL ||
