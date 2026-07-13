@@ -2,7 +2,10 @@ import { tool } from "ai";
 import { z } from "zod";
 import type { CorpusSearchResult } from "./search-corpus";
 
-export type ResolvedCitation = CorpusSearchResult & { marker: number };
+export type ResolvedCitation = CorpusSearchResult & {
+  marker: number;
+  excerpt: string | undefined;
+};
 
 export const createProvideCitations = ({
   getChunk,
@@ -15,11 +18,18 @@ export const createProvideCitations = ({
     execute: ({ citations }): { citations: ResolvedCitation[] } => {
       // Server-side validation: drop any chunkId that wasn't actually
       // retrieved this turn, so a hallucinated id can never render (PRD:
-      // "no citation ID is invented").
+      // "no citation ID is invented"). Also drop any excerpt that isn't an
+      // exact substring of the chunk, so a paraphrased/hallucinated quote
+      // never renders as if it were the source text.
       const resolved = citations
-        .map(({ marker, chunkId }) => {
+        .map(({ marker, chunkId, excerpt }) => {
           const chunk = getChunk(chunkId);
-          return chunk ? { ...chunk, marker } : null;
+          if (!chunk) {
+            return null;
+          }
+          const verifiedExcerpt =
+            excerpt && chunk.content.includes(excerpt) ? excerpt : undefined;
+          return { ...chunk, excerpt: verifiedExcerpt, marker };
         })
         .filter((c): c is ResolvedCitation => c !== null);
 
@@ -32,6 +42,11 @@ export const createProvideCitations = ({
             chunkId: z
               .string()
               .describe("The chunkId exactly as returned by searchCorpus"),
+            excerpt: z
+              .string()
+              .describe(
+                "The exact verbatim sentence (or short span) copied character-for-character from the chunk's content that most directly supports the claim at this marker. Do not paraphrase or summarize — copy it exactly as it appears in the chunk."
+              ),
             marker: z
               .number()
               .int()
