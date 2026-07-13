@@ -1,12 +1,7 @@
 import { embed, gateway, tool } from "ai";
 import { z } from "zod";
+import { EMBED_INPUT_TYPE, EMBEDDING_MODEL_ID } from "@/lib/ai/embedding";
 import { searchChunksByEmbedding } from "@/lib/db/queries";
-
-// Must match the model that embedded the corpus chunks. The loaded corpus was
-// verified (2026-07-13) to be cohere/embed-v4.0 at 1536 dims, not the TDD's
-// text-embedding-3-small — re-embedding a chunk and comparing against its
-// stored vector is the way to re-check this if retrieval similarities crater.
-export const EMBEDDING_MODEL_ID = "cohere/embed-v4.0";
 
 const TOP_K = 8;
 
@@ -15,7 +10,7 @@ export async function embedQuery(query: string): Promise<number[]> {
     model: gateway.textEmbeddingModel(EMBEDDING_MODEL_ID),
     // Cohere embeddings are asymmetric: corpus chunks are embedded as
     // documents, so search queries must use the query input type.
-    providerOptions: { cohere: { inputType: "search_query" } },
+    providerOptions: { cohere: { inputType: EMBED_INPUT_TYPE.QUERY } },
     value: query,
   });
   return embedding;
