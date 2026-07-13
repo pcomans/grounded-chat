@@ -25,13 +25,20 @@ import { getLanguageModel } from "@/lib/ai/providers";
 import { createDocument } from "@/lib/ai/tools/create-document";
 import { editDocument } from "@/lib/ai/tools/edit-document";
 import { getWeather } from "@/lib/ai/tools/get-weather";
-import { createProvideCitations } from "@/lib/ai/tools/provide-citations";
+import {
+  createProvideCitations,
+  type ResolvedCitation,
+} from "@/lib/ai/tools/provide-citations";
 import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
 import {
   type CorpusSearchResult,
   createSearchCorpus,
 } from "@/lib/ai/tools/search-corpus";
 import { updateDocument } from "@/lib/ai/tools/update-document";
+import {
+  type CitationVerdict,
+  verifyCitations,
+} from "@/lib/ai/verify-citations";
 import {
   isLangSmithTracingEnabled,
   isProductionEnvironment,
@@ -40,6 +47,7 @@ import {
   createStreamId,
   deleteChatById,
   getChatById,
+  getChunkContextsByIds,
   getMessageCountByUserId,
   getMessagesByChatId,
   saveChat,
@@ -222,6 +230,11 @@ export async function POST(request: Request) {
         // invented").
         const retrievedChunks = new Map<string, CorpusSearchResult>();
 
+        // The validated citations the model actually reported this turn.
+        // Captured server-side so the P1 verifier runs over exactly what
+        // renders (PRD §03 P1).
+        let resolvedCitations: ResolvedCitation[] = [];
+
         const clearHealthCheckTimer = () => {
           if (healthCheckTimer) {
             clearTimeout(healthCheckTimer);
@@ -333,6 +346,9 @@ export async function POST(request: Request) {
             getWeather,
             provideCitations: createProvideCitations({
               getChunk: (chunkId) => retrievedChunks.get(chunkId),
+              onCitations: (citations) => {
+                resolvedCitations = citations;
+              },
             }),
             requestSuggestions: requestSuggestions({
               dataStream,
@@ -368,6 +384,65 @@ export async function POST(request: Request) {
             updateChatTitleById({ chatId: id, title });
           } catch {
             /* non-fatal */
+          }
+        }
+
+        // --- P1: in-context citation verification (PRD §03 / TDD §8) ---
+        // Runs after the answer streams. Awaiting result.text ensures the
+        // model finished and provideCitations has fired, so resolvedCitations
+        // is settled. Verdicts ride this same stream — which stays open until
+        // we write them — well under maxDuration. Any failure downgrades the
+        // whole set to `verification_unavailable` rather than dropping cards.
+        let answerText: string;
+        try {
+          answerText = await result.text;
+        } catch {
+          answerText = "";
+        }
+
+        if (resolvedCitations.length > 0) {
+          try {
+            const contexts = await getChunkContextsByIds({
+              chunkIds: resolvedCitations.map((c) => c.chunkId),
+            });
+            const contextById = new Map(contexts.map((c) => [c.chunkId, c]));
+
+            const toVerify = resolvedCitations.flatMap((c) => {
+              const ctx = contextById.get(c.chunkId);
+              return ctx
+                ? [
+                    {
+                      chunkId: c.chunkId,
+                      contextWindow: ctx.contextWindow,
+                      docTitle: c.docTitle,
+                      excerpt: c.content,
+                      page: c.page,
+                    },
+                  ]
+                : [];
+            });
+
+            const verdicts = await verifyCitations({
+              answer: answerText,
+              citations: toVerify,
+              modelId: chatModel,
+            });
+
+            dataStream.write({
+              data: verdicts,
+              type: "data-citationVerdicts",
+            });
+          } catch {
+            const unavailable: CitationVerdict[] = resolvedCitations.map(
+              (c) => ({
+                chunkId: c.chunkId,
+                status: "verification_unavailable",
+              })
+            );
+            dataStream.write({
+              data: unavailable,
+              type: "data-citationVerdicts",
+            });
           }
         }
       },

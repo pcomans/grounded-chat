@@ -1,6 +1,7 @@
 "use client";
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { useCallback } from "react";
+import type { CitationVerdict } from "@/lib/ai/verify-citations";
 import type { Vote } from "@/lib/db/schema";
 import type { ChatMessage } from "@/lib/types";
 import { cn, sanitizeText } from "@/lib/utils";
@@ -156,6 +157,17 @@ const PurePreviewMessage = ({
     { isStreaming: false, rendered: false, text: "" }
   ) ?? { isStreaming: false, rendered: false, text: "" };
 
+  // In-context verdicts arrive as a data part after the citations tool part,
+  // on the same message. Gather them once so each citation card can show its
+  // verdict (or a pending state until this part lands).
+  const verdictPart = message.parts?.find(
+    (part) => part.type === "data-citationVerdicts"
+  );
+  const citationVerdicts =
+    verdictPart && "data" in verdictPart
+      ? (verdictPart.data as CitationVerdict[])
+      : undefined;
+
   const parts = message.parts?.map((part, index) => {
     const { type } = part;
     const key = `message-${message.id}-part-${index}`;
@@ -265,7 +277,10 @@ const PurePreviewMessage = ({
 
       return (
         <div className="w-full" key={toolCallId}>
-          <Citations citations={part.output.citations} />
+          <Citations
+            citations={part.output.citations}
+            verdicts={citationVerdicts}
+          />
         </div>
       );
     }

@@ -595,6 +595,70 @@ export async function getStreamIdsByChatId({ chatId }: { chatId: string }) {
   }
 }
 
+export type ChunkContext = {
+  chunkId: string;
+  content: string;
+  docTitle: string;
+  page: number;
+  // The cited chunk widened to its surrounding document text (~±1 page),
+  // sliced from corpusDocument.fullText at read time. This is what the
+  // verifier reads the citation *in* (TDD §8): a chunk can be relevant yet
+  // unsupportive once you see the sentences around it.
+  contextWindow: string;
+};
+
+// Bounds for the read-time context window, in characters. Page size varies per
+// book, so we estimate chars-per-page from the doc and clamp to keep the
+// verifier prompt bounded regardless of outliers.
+const CONTEXT_PAD_MIN = 1500;
+const CONTEXT_PAD_MAX = 4000;
+
+export async function getChunkContextsByIds({
+  chunkIds,
+}: {
+  chunkIds: string[];
+}): Promise<ChunkContext[]> {
+  if (chunkIds.length === 0) {
+    return [];
+  }
+
+  try {
+    const rows = await db
+      .select({
+        charEnd: corpusChunk.charEnd,
+        charStart: corpusChunk.charStart,
+        chunkId: corpusChunk.id,
+        content: corpusChunk.content,
+        docTitle: corpusDocument.title,
+        fullText: corpusDocument.fullText,
+        page: corpusChunk.page,
+        pageCount: corpusDocument.pageCount,
+      })
+      .from(corpusChunk)
+      .innerJoin(corpusDocument, eq(corpusChunk.documentId, corpusDocument.id))
+      .where(inArray(corpusChunk.id, chunkIds));
+
+    return rows.map((row) => {
+      const charsPerPage = row.fullText.length / Math.max(row.pageCount, 1);
+      const pad = Math.min(
+        CONTEXT_PAD_MAX,
+        Math.max(CONTEXT_PAD_MIN, Math.round(charsPerPage))
+      );
+      const start = Math.max(0, row.charStart - pad);
+      const end = Math.min(row.fullText.length, row.charEnd + pad);
+      return {
+        chunkId: row.chunkId,
+        content: row.content,
+        contextWindow: row.fullText.slice(start, end),
+        docTitle: row.docTitle,
+        page: row.page,
+      };
+    });
+  } catch (error) {
+    throw new ChatbotError("bad_request:database", { cause: error });
+  }
+}
+
 export async function searchChunksByEmbedding({
   embedding,
   limit = 8,
