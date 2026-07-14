@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  CheckCircle2,
-  CircleHelp,
-  CircleOff,
-  Loader2,
-  TriangleAlert,
-} from "lucide-react";
+import { CheckCircle2, CircleHelp, Loader2, TriangleAlert } from "lucide-react";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import type { ResolvedCitation } from "@/lib/ai/tools/provide-citations";
 import type {
@@ -53,12 +47,6 @@ const STATUS_STYLES: Record<CitationVerdictStatus, StatusStyle> = {
     Icon: CheckCircle2,
     label: "Supported in broader context",
     markClassName: "bg-emerald-500/20",
-  },
-  verification_unavailable: {
-    className: "text-muted-foreground",
-    Icon: CircleOff,
-    label: "Verification unavailable",
-    markClassName: "bg-primary/15",
   },
 };
 

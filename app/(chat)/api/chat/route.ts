@@ -36,10 +36,7 @@ import {
   type RetrievedChunk,
 } from "@/lib/ai/tools/search-corpus";
 import { updateDocument } from "@/lib/ai/tools/update-document";
-import {
-  type CitationVerdict,
-  verifyCitations,
-} from "@/lib/ai/verify-citations";
+import { verifyCitations } from "@/lib/ai/verify-citations";
 import {
   isLangSmithTracingEnabled,
   isProductionEnvironment,
@@ -48,7 +45,7 @@ import {
   createStreamId,
   deleteChatById,
   getChatById,
-  getChunkContextsByIds,
+  getChunkNeighborhoodsByIds,
   getMessageCountByUserId,
   getMessagesByChatId,
   saveChat,
@@ -392,68 +389,50 @@ export async function POST(request: Request) {
         // Runs after the answer streams. Awaiting the steps ensures the model
         // finished and provideCitations has fired, so resolvedCitations is
         // settled. Verdicts ride this same stream — which stays open until we
-        // write them — well under maxDuration. Any failure downgrades the whole
-        // set to `verification_unavailable` rather than dropping cards.
+        // write them — well under maxDuration. No fallback: any failure throws
+        // and surfaces through the stream's onError (fail loudly).
         //
         // Concatenate text across ALL steps: result.text is only the *final*
         // step's text, which is empty here because the final step is the
         // provideCitations tool call (the answer prose lives in earlier steps).
-        let answerText: string;
-        try {
+        if (resolvedCitations.length > 0) {
           const steps = await result.steps;
-          answerText = steps
+          const answerText = steps
             .map((step) => step.text)
             .filter(Boolean)
             .join("\n\n")
             .trim();
-        } catch {
-          answerText = "";
-        }
 
-        if (resolvedCitations.length > 0) {
-          try {
-            const contexts = await getChunkContextsByIds({
-              chunkIds: resolvedCitations.map((c) => c.chunkId),
-            });
-            const contextById = new Map(contexts.map((c) => [c.chunkId, c]));
+          const neighborhoods = await getChunkNeighborhoodsByIds({
+            chunkIds: resolvedCitations.map((c) => c.chunkId),
+          });
+          const neighborhoodById = new Map(
+            neighborhoods.map((n) => [n.chunkId, n])
+          );
 
-            const toVerify = resolvedCitations.flatMap((c) => {
-              const ctx = contextById.get(c.chunkId);
-              return ctx
-                ? [
-                    {
-                      chunkId: c.chunkId,
-                      contextWindow: ctx.contextWindow,
-                      docTitle: c.docTitle,
-                      excerpt: c.content,
-                      page: c.page,
-                    },
-                  ]
-                : [];
-            });
-
-            const verdicts = await verifyCitations({
-              answer: answerText,
-              citations: toVerify,
-              modelId: chatModel,
-            });
-
-            dataStream.write({
-              data: verdicts,
-              type: "data-citationVerdicts",
-            });
-          } catch {
-            const unavailable: CitationVerdict[] = resolvedCitations.map(
-              (c) => ({
+          const verdicts = await verifyCitations({
+            answer: answerText,
+            citations: resolvedCitations.map((c) => {
+              const neighborhood = neighborhoodById.get(c.chunkId);
+              if (!neighborhood) {
+                throw new Error(
+                  `No neighborhood found for cited chunk ${c.chunkId}.`
+                );
+              }
+              return {
                 chunkId: c.chunkId,
-                status: "verification_unavailable",
-              })
-            );
-            dataStream.write({
-              data: unavailable,
-              type: "data-citationVerdicts",
-            });
-          }
+                content: c.content,
+                contextWindow: neighborhood.contextWindow,
+                docTitle: c.docTitle,
+                page: c.page,
+              };
+            }),
+          });
+
+          dataStream.write({
+            data: verdicts,
+            type: "data-citationVerdicts",
+          });
         }
       },
       generateId: generateUUID,
