@@ -26,13 +26,17 @@ import { getLanguageModel } from "@/lib/ai/providers";
 import { createDocument } from "@/lib/ai/tools/create-document";
 import { editDocument } from "@/lib/ai/tools/edit-document";
 import { getWeather } from "@/lib/ai/tools/get-weather";
-import { createProvideCitations } from "@/lib/ai/tools/provide-citations";
+import {
+  createProvideCitations,
+  type ResolvedCitation,
+} from "@/lib/ai/tools/provide-citations";
 import { requestSuggestions } from "@/lib/ai/tools/request-suggestions";
 import {
   createSearchCorpus,
   type RetrievedChunk,
 } from "@/lib/ai/tools/search-corpus";
 import { updateDocument } from "@/lib/ai/tools/update-document";
+import { verifyCitations } from "@/lib/ai/verify-citations";
 import {
   isLangSmithTracingEnabled,
   isProductionEnvironment,
@@ -41,6 +45,7 @@ import {
   createStreamId,
   deleteChatById,
   getChatById,
+  getChunkNeighborhoodsByIds,
   getMessageCountByUserId,
   getMessagesByChatId,
   saveChat,
@@ -223,6 +228,11 @@ export async function POST(request: Request) {
         // invented").
         const retrievedChunks = new Map<string, RetrievedChunk>();
 
+        // The validated citations the model actually reported this turn.
+        // Captured server-side so the P1 verifier runs over exactly what
+        // renders (PRD §03 P1).
+        let resolvedCitations: ResolvedCitation[] = [];
+
         const clearHealthCheckTimer = () => {
           if (healthCheckTimer) {
             clearTimeout(healthCheckTimer);
@@ -334,6 +344,9 @@ export async function POST(request: Request) {
             getWeather,
             provideCitations: createProvideCitations({
               getChunk: (chunkId) => retrievedChunks.get(chunkId),
+              onCitations: (citations) => {
+                resolvedCitations = citations;
+              },
             }),
             requestSuggestions: requestSuggestions({
               dataStream,
@@ -370,6 +383,61 @@ export async function POST(request: Request) {
           } catch {
             /* non-fatal */
           }
+        }
+
+        // --- P1: in-context citation verification (PRD §03 / TDD §8) ---
+        // Awaiting result.steps blocks until the model has fully finished, which
+        // is when provideCitations has executed and populated resolvedCitations.
+        // This MUST come before we read resolvedCitations: dataStream.merge()
+        // drains the answer stream eagerly but asynchronously, so at this line
+        // the tool hasn't run yet — result.steps resolves only after it has.
+        //
+        // Concatenate text across ALL steps: result.text is only the *final*
+        // step's text, which is empty here because the final step is the
+        // provideCitations tool call (the answer prose lives in earlier steps).
+        const steps = await result.steps;
+
+        if (resolvedCitations.length > 0) {
+          const answerText = steps
+            .map((step) => step.text)
+            .filter(Boolean)
+            .join("\n\n")
+            .trim();
+
+          const neighborhoods = await getChunkNeighborhoodsByIds({
+            chunkIds: resolvedCitations.map((c) => c.chunkId),
+          });
+          const neighborhoodById = new Map(
+            neighborhoods.map((n) => [n.chunkId, n])
+          );
+
+          // Verdicts ride this same stream — which stays open until we write
+          // them. No fallback: any failure throws and surfaces through the
+          // stream's onError (fail loudly).
+          const verdicts = await verifyCitations({
+            answer: answerText,
+            citations: resolvedCitations.map((c) => {
+              const neighborhood = neighborhoodById.get(c.chunkId);
+              if (!neighborhood) {
+                throw new Error(
+                  `No neighborhood found for cited chunk ${c.chunkId}.`
+                );
+              }
+              return {
+                chunkId: c.chunkId,
+                content: c.content,
+                contextWindow: neighborhood.contextWindow,
+                docTitle: c.docTitle,
+                marker: c.marker,
+                page: c.page,
+              };
+            }),
+          });
+
+          dataStream.write({
+            data: verdicts,
+            type: "data-citationVerdicts",
+          });
         }
       },
       generateId: generateUUID,

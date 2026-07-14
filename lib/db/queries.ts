@@ -12,6 +12,8 @@ import {
   inArray,
   isNotNull,
   lt,
+  lte,
+  or,
   type SQL,
   sql,
 } from "drizzle-orm";
@@ -590,6 +592,99 @@ export async function getStreamIdsByChatId({ chatId }: { chatId: string }) {
       .execute();
 
     return streamIds.map(({ id }) => id);
+  } catch (error) {
+    throw new ChatbotError("bad_request:database", { cause: error });
+  }
+}
+
+export type ChunkNeighborhood = {
+  chunkId: string;
+  docTitle: string;
+  page: number;
+  content: string;
+  // The cited chunk plus its immediate neighbors (chunkIndex ±1) in reading
+  // order — the "broader context" the verifier judges the citation in (TDD §8).
+  // Keyed off chunkIndex, which is reliable; charStart/charEnd do NOT index
+  // into fullText (different extraction), so we don't use them here.
+  contextWindow: string;
+};
+
+// How many chunks on each side of the cited chunk to include as context.
+const NEIGHBOR_RADIUS = 1;
+
+export async function getChunkNeighborhoodsByIds({
+  chunkIds,
+}: {
+  chunkIds: string[];
+}): Promise<ChunkNeighborhood[]> {
+  if (chunkIds.length === 0) {
+    return [];
+  }
+
+  try {
+    const targets = await db
+      .select({
+        chunkId: corpusChunk.id,
+        chunkIndex: corpusChunk.chunkIndex,
+        content: corpusChunk.content,
+        docTitle: corpusDocument.title,
+        documentId: corpusChunk.documentId,
+        page: corpusChunk.page,
+      })
+      .from(corpusChunk)
+      .innerJoin(corpusDocument, eq(corpusChunk.documentId, corpusDocument.id))
+      .where(inArray(corpusChunk.id, chunkIds));
+
+    // No matching chunks (e.g. reingested between retrieval and verification):
+    // stop here. Otherwise windowConds would be empty and Drizzle's or() would
+    // return undefined, turning the neighbor query into a full-corpus scan.
+    if (targets.length === 0) {
+      return [];
+    }
+
+    // Fetch every chunk in each target's ±NEIGHBOR_RADIUS window, matched on the
+    // exact (documentId, chunkIndex) pair so indices never bleed across docs.
+    const windowConds = targets.map((t) =>
+      and(
+        eq(corpusChunk.documentId, t.documentId),
+        gte(corpusChunk.chunkIndex, t.chunkIndex - NEIGHBOR_RADIUS),
+        lte(corpusChunk.chunkIndex, t.chunkIndex + NEIGHBOR_RADIUS)
+      )
+    );
+
+    const neighbors = await db
+      .select({
+        chunkIndex: corpusChunk.chunkIndex,
+        content: corpusChunk.content,
+        documentId: corpusChunk.documentId,
+      })
+      .from(corpusChunk)
+      .where(or(...windowConds));
+
+    const contentByCoord = new Map(
+      neighbors.map((n) => [`${n.documentId}:${n.chunkIndex}`, n.content])
+    );
+
+    return targets.map((t) => {
+      const parts: string[] = [];
+      for (
+        let idx = t.chunkIndex - NEIGHBOR_RADIUS;
+        idx <= t.chunkIndex + NEIGHBOR_RADIUS;
+        idx += 1
+      ) {
+        const content = contentByCoord.get(`${t.documentId}:${idx}`);
+        if (content) {
+          parts.push(content);
+        }
+      }
+      return {
+        chunkId: t.chunkId,
+        content: t.content,
+        contextWindow: parts.join("\n\n"),
+        docTitle: t.docTitle,
+        page: t.page,
+      };
+    });
   } catch (error) {
     throw new ChatbotError("bad_request:database", { cause: error });
   }

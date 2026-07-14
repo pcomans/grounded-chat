@@ -7,6 +7,7 @@ import type { createProvideCitations } from "./ai/tools/provide-citations";
 import type { requestSuggestions } from "./ai/tools/request-suggestions";
 import type { createSearchCorpus } from "./ai/tools/search-corpus";
 import type { updateDocument } from "./ai/tools/update-document";
+import type { CitationVerdict } from "./ai/verify-citations";
 import type { Suggestion } from "./db/schema";
 
 export const messageMetadataSchema = z.object({
@@ -56,6 +57,8 @@ export type CustomUIDataTypes = {
   finish: null;
   "chat-title": string;
   "waiting-status": WaitingStatusData;
+  // Per-citation in-context verdicts, emitted after the answer streams (P1).
+  citationVerdicts: CitationVerdict[];
 };
 
 export type ChatMessage = UIMessage<

@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertDialog,
@@ -26,7 +27,13 @@ import { DataStreamHandler } from "./data-stream-handler";
 import { submitEditedMessage } from "./message-editor";
 import { Messages } from "./messages";
 import { MultimodalInput } from "./multimodal-input";
-import { PdfViewer } from "./pdf-viewer";
+
+// react-pdf pulls in pdf.js, which evaluates `new DOMMatrix()` at module load
+// and throws under Node SSR — load it client-side only.
+const PdfViewer = dynamic(
+  () => import("./pdf-viewer").then((m) => m.PdfViewer),
+  { ssr: false }
+);
 
 export function ChatShell() {
   const {

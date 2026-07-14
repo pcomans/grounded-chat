@@ -9,8 +9,12 @@ export type ResolvedCitation = RetrievedChunk & {
 
 export const createProvideCitations = ({
   getChunk,
+  onCitations,
 }: {
   getChunk: (chunkId: string) => RetrievedChunk | undefined;
+  // Fires with the validated citations so the route can run the P1 verifier
+  // over exactly what will render — mirrors searchCorpus's onResults.
+  onCitations?: (citations: ResolvedCitation[]) => void;
 }) =>
   tool({
     description:
@@ -32,6 +36,8 @@ export const createProvideCitations = ({
           return { ...chunk, excerpt: verifiedExcerpt, marker };
         })
         .filter((c): c is ResolvedCitation => c !== null);
+
+      onCitations?.(resolved);
 
       return { citations: resolved };
     },

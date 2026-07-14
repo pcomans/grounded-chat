@@ -129,13 +129,19 @@ function PureMultimodalInput({
     ""
   );
 
+  // One-time draft restore after hydration. localStorage is a write-only mirror
+  // of `input` (effect below). Feeding localStorage — or the DOM value — back
+  // into state on every change closes a setInput -> localStorage -> setInput
+  // cycle that loops infinitely ("Maximum update depth exceeded") on fast
+  // typing, since its only exit is DOM==state equality, which isn't guaranteed.
+  // usehooks-ts hydrates localStorageInput synchronously, so it already holds
+  // the saved draft on the first client render.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: one-time mount hydration by design
   useEffect(() => {
-    if (textareaRef.current) {
-      const domValue = textareaRef.current.value;
-      const finalValue = domValue || localStorageInput || "";
-      setInput(finalValue);
+    if (localStorageInput) {
+      setInput(localStorageInput);
     }
-  }, [localStorageInput, setInput]);
+  }, []);
 
   useEffect(() => {
     setLocalStorageInput(input);
