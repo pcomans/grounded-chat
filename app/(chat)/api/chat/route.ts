@@ -386,17 +386,18 @@ export async function POST(request: Request) {
         }
 
         // --- P1: in-context citation verification (PRD §03 / TDD §8) ---
-        // Runs after the answer streams. Awaiting the steps ensures the model
-        // finished and provideCitations has fired, so resolvedCitations is
-        // settled. Verdicts ride this same stream — which stays open until we
-        // write them — well under maxDuration. No fallback: any failure throws
-        // and surfaces through the stream's onError (fail loudly).
+        // Awaiting result.steps blocks until the model has fully finished and
+        // the stream is drained — which is when provideCitations has executed
+        // and populated resolvedCitations. This MUST come before we read
+        // resolvedCitations: dataStream.merge() only wires the stream up, it
+        // doesn't drain it, so the tool hasn't run yet at this point.
         //
         // Concatenate text across ALL steps: result.text is only the *final*
         // step's text, which is empty here because the final step is the
         // provideCitations tool call (the answer prose lives in earlier steps).
+        const steps = await result.steps;
+
         if (resolvedCitations.length > 0) {
-          const steps = await result.steps;
           const answerText = steps
             .map((step) => step.text)
             .filter(Boolean)
@@ -410,6 +411,9 @@ export async function POST(request: Request) {
             neighborhoods.map((n) => [n.chunkId, n])
           );
 
+          // Verdicts ride this same stream — which stays open until we write
+          // them. No fallback: any failure throws and surfaces through the
+          // stream's onError (fail loudly).
           const verdicts = await verifyCitations({
             answer: answerText,
             citations: resolvedCitations.map((c) => {
