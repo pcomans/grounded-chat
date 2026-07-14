@@ -635,6 +635,13 @@ export async function getChunkNeighborhoodsByIds({
       .innerJoin(corpusDocument, eq(corpusChunk.documentId, corpusDocument.id))
       .where(inArray(corpusChunk.id, chunkIds));
 
+    // No matching chunks (e.g. reingested between retrieval and verification):
+    // stop here. Otherwise windowConds would be empty and Drizzle's or() would
+    // return undefined, turning the neighbor query into a full-corpus scan.
+    if (targets.length === 0) {
+      return [];
+    }
+
     // Fetch every chunk in each target's ±NEIGHBOR_RADIUS window, matched on the
     // exact (documentId, chunkIndex) pair so indices never bleed across docs.
     const windowConds = targets.map((t) =>

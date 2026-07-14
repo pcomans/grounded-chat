@@ -37,6 +37,8 @@ export type CitationVerdict = {
 
 export type CitationToVerify = {
   chunkId: string;
+  // The inline [n] marker this citation carries in the answer text.
+  marker: number;
   docTitle: string;
   page: number;
   // The exact cited chunk text (what the citation card displays).
@@ -48,6 +50,8 @@ export type CitationToVerify = {
 // Segments shorter than this are folded into the previous one, so numbering
 // isn't polluted by OCR fragments like "1.2" or "Fig.".
 const MIN_SEGMENT_CHARS = 24;
+// Cap so a verdict can't turn the whole chunk into one giant highlight.
+const MAX_HIGHLIGHTS = 4;
 
 // The verifier runs on a fixed fast model, independent of the chat model.
 // Judging citations against a fetched context window is mechanical: Haiku 4.5
@@ -132,11 +136,11 @@ function buildPrompt(
   segmented: Array<{ citation: CitationToVerify; segments: Segment[] }>
 ): string {
   const blocks = segmented
-    .map(({ citation: c, segments }, i) => {
+    .map(({ citation: c, segments }) => {
       const numbered = segments
         .map((s, idx) => `[${idx + 1}] ${s.text.trim()}`)
         .join("\n");
-      return `--- Citation ${i + 1} ---
+      return `--- Citation [${c.marker}] (the answer's inline [${c.marker}] marker) ---
 chunkId: ${c.chunkId}
 Source: ${c.docTitle} (p. ${c.page})
 
@@ -150,7 +154,7 @@ ${c.contextWindow.trim()}
     })
     .join("\n\n");
 
-  return `You are a citation verifier for a retrieval-augmented answer about Ancient Egypt and Nubia. For each citation, judge whether the cited chunk — read in its surrounding context — actually supports how the answer uses it. A chunk can look relevant yet be unsupported or even contradicted once you read the passages around it.
+  return `You are a citation verifier for a retrieval-augmented answer about Ancient Egypt and Nubia. Each citation is labeled with the inline [n] marker it carries in the answer; judge whether the cited chunk — read in its surrounding context — actually supports the specific claim the answer makes at that [n] marker. A chunk can look relevant yet be unsupported or even contradicted once you read the passages around it.
 
 For each citation return exactly one verdict:
 - "supported": the surrounding context supports the answer's use of this citation.
@@ -219,7 +223,8 @@ export async function verifyCitations({
     // highlights are informational, the verdict is the load-bearing output.
     const highlights = Array.from(new Set(v.relevantSegments))
       .map((n) => segments[n - 1]?.text.trim())
-      .filter((t): t is string => Boolean(t));
+      .filter((t): t is string => Boolean(t))
+      .slice(0, MAX_HIGHLIGHTS);
 
     return {
       chunkId,

@@ -144,7 +144,7 @@ Priority maps to the two-hour execution order: P0 is the hard demo gate, P1 is a
 | P0       | Citation cards                       | Under the answer, show document title, chunk ID, page range when available, and the retrieved chunk excerpt                                                                                                   |
 | P0       | Baseline comparison and eval harness | Run the parallel-generated dataset through no-RAG and RAG paths with the same answer model and record per-case plus aggregate results                                                                         |
 | P0       | LangSmith observability              | Trace chat, retrieval, answer generation, eval variants, and verifier runs in a dedicated project; expose the trace ID or link for the demo                                                                   |
-| P1       | Broader-context citation verifier    | In one structured model call, review the answer, all cited chunks, and each chunk's parent context; label every citation `supported` or `contradicted`, or show `verification unavailable` if the check fails |
+| P1       | Broader-context citation verifier    | In one structured model call, review the answer against each cited chunk read inside its neighborhood (the chunk plus its immediate neighbors); label every citation `supported`, `contradicted`, or `not_enough_context`. Verification failures fail loudly (no verdict is emitted); the card then shows a terminal `Verification unavailable` state |
 | P1       | Verdict UI                           | Display textual status plus a supplemental icon; never rely on color or emoji alone; show an overall warning if every citation is contradicted                                                                |
 | P2       | Exact quote and expandable context   | Extract the shortest supporting quote and let the user expand surrounding text without leaving chat                                                                                                           |
 | P2       | Side-by-side source view             | Open the answer beside the relevant PDF page or region                                                                                                                                                        |
@@ -174,7 +174,7 @@ These scenarios are the manual test script for the prototype and map one-to-one 
 
 **AT-3 — Abstention (P0).** When the tester asks a question outside the corpus (for example, a modern-events question), then the assistant states the corpus does not establish the answer and shows no citation cards. Fail if it answers confidently or fabricates a citation.
 
-**AT-4 — Verification verdicts (P1).** Given AT-1 passed with the verifier enabled, when the answer completes, then each card shows `Verifying broader context…` and updates to explicit `Supported` or `Contradicted` text with a supplemental icon; a failed verification shows `Verification unavailable` instead of a forced verdict. Fail if a card stays pending longer than 30 seconds, shows a verdict without a text label, or displays a confidence percentage.
+**AT-4 — Verification verdicts (P1).** Given AT-1 passed with the verifier enabled, when the answer completes, then each card shows `Verifying broader context…` and updates to explicit `Supported`, `Contradicted`, or `Not enough context` text with a supplemental icon; if verification fails no verdict is emitted and, once the message is no longer streaming, the card shows a terminal `Verification unavailable` state instead of a forced verdict. Fail if a card stays in the animated pending state after streaming ends, shows a verdict without a text label, or displays a confidence percentage.
 
 **AT-5 — Contradicted display (P1).** Given a contradicted citation (live, or the mocked state from the usability script), then the card shows a warning with explicit text and the citation is not silently removed; if every citation is contradicted, an overall warning appears above the cards.
 
@@ -242,10 +242,10 @@ Implementation should follow the official [LangSmith Vercel AI SDK tracing guide
 
 #### P1: Citation Verification
 
-1. After the grounded answer completes, the verifier receives the answer, all citations, and broader context for every cited chunk in one call. A batched review preserves cross-citation relationships.
-2. The verifier's structured output schema is a two-value enum — `supported` or `contradicted` — keyed by `citationId`; no confidence percentage is requested or displayed. The model never returns `verification_unavailable`; the client assigns that status when the verification call fails (requirement 4).
-3. `supported` means the broader context supports the answer's use of that citation. `contradicted` means the context conflicts with, materially qualifies, or fails to support that use.
-4. If the verification call fails or cannot decide safely, the UI shows `Verification unavailable` rather than forcing a verdict.
+1. After the grounded answer completes, the verifier receives the answer and, for every cited chunk, the chunk read inside its neighborhood (the chunk plus its immediate neighbors, keyed off `chunkIndex`) in one call. A batched review preserves cross-citation relationships.
+2. The verifier's structured output schema is a three-value enum — `supported`, `contradicted`, or `not_enough_context` — keyed by `chunkId`; no confidence percentage is requested or displayed.
+3. `supported` means the neighborhood supports the answer's use of that citation. `contradicted` means it conflicts with or materially qualifies that use. `not_enough_context` means the passage is on-topic but does not, on its own, establish the specific claim.
+4. Verification fails loudly: if the call errors or the model omits a citation, the whole step throws and no verdict is emitted (no forced or fabricated verdict). Once the message is no longer streaming, a card with no verdict shows a terminal `Verification unavailable` state client-side.
 5. The verifier annotates the answer but does not rewrite it in this prototype.
 
 ### Data Contracts
@@ -272,11 +272,13 @@ type Citation = {
 };
 
 type CitationVerdict = {
-  citationId: string;
-    // Model output is restricted to the first two values;
-  // the client assigns verification_unavailable on call failure.
-  status: "supported" | "contradicted" | "verification_unavailable";
-  rationale: string;
+  chunkId: string;
+  status: "supported" | "contradicted" | "not_enough_context";
+  // One sentence, present only when status !== "supported".
+  note?: string;
+  // Verbatim spans of the cited chunk that are relevant, selected by segment
+  // number so they resolve to exact substrings. Absent when none apply.
+  highlights?: string[];
 };
 ```
 

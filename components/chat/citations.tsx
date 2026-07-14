@@ -1,6 +1,12 @@
 "use client";
 
-import { CheckCircle2, CircleHelp, Loader2, TriangleAlert } from "lucide-react";
+import {
+  CheckCircle2,
+  CircleHelp,
+  CircleOff,
+  Loader2,
+  TriangleAlert,
+} from "lucide-react";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import type { ResolvedCitation } from "@/lib/ai/tools/provide-citations";
 import type {
@@ -205,12 +211,31 @@ function HighlightedExcerpt({
   );
 }
 
-function VerdictRow({ verdict }: { verdict?: CitationVerdict }) {
+function VerdictRow({
+  verdict,
+  isStreaming,
+}: {
+  verdict?: CitationVerdict;
+  isStreaming: boolean;
+}) {
   if (!verdict) {
+    // Still streaming: the verdict part may still arrive — show progress.
+    if (isStreaming) {
+      return (
+        <div className="mt-2 flex items-center gap-1.5 text-muted-foreground text-xs">
+          <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+          <span>Verifying broader context…</span>
+        </div>
+      );
+    }
+    // Message is done streaming but no verdict landed — verification failed or
+    // didn't run. Show a terminal state instead of a spinner that never
+    // resolves on reload. (Client presentational only; the server stays
+    // fail-loud and never emits a verdict here.)
     return (
       <div className="mt-2 flex items-center gap-1.5 text-muted-foreground text-xs">
-        <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
-        <span>Verifying broader context…</span>
+        <CircleOff aria-hidden="true" className="size-3.5 shrink-0" />
+        <span>Verification unavailable</span>
       </div>
     );
   }
@@ -235,10 +260,12 @@ function VerdictRow({ verdict }: { verdict?: CitationVerdict }) {
 function CitationCard({
   citation,
   verdict,
+  isStreaming,
   onOpen,
 }: {
   citation: ResolvedCitation;
   verdict?: CitationVerdict;
+  isStreaming: boolean;
   onOpen: (citation: ResolvedCitation) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -300,7 +327,7 @@ function CitationCard({
           {expanded ? "Show less" : "Show full chunk"}
         </button>
       ) : null}
-      <VerdictRow verdict={verdict} />
+      <VerdictRow isStreaming={isStreaming} verdict={verdict} />
     </div>
   );
 }
@@ -309,10 +336,14 @@ export function Citations({
   citations,
   onOpen,
   verdicts,
+  isStreaming,
 }: {
   citations: ResolvedCitation[];
   onOpen: (citation: ResolvedCitation) => void;
   verdicts?: CitationVerdict[];
+  // Whether the owning message is still streaming. Distinguishes a verdict
+  // that hasn't arrived yet (spinner) from one that never will (terminal).
+  isStreaming: boolean;
 }) {
   if (citations.length === 0) {
     return null;
@@ -350,6 +381,7 @@ export function Citations({
         {sorted.map((citation) => (
           <CitationCard
             citation={citation}
+            isStreaming={isStreaming}
             key={citation.chunkId}
             onOpen={onOpen}
             verdict={verdictByChunk.get(citation.chunkId)}

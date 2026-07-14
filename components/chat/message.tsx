@@ -294,6 +294,7 @@ const PurePreviewMessage = ({
         <div className="w-full" key={toolCallId}>
           <Citations
             citations={part.output.citations}
+            isStreaming={isLoading}
             onOpen={handleOpenCitation}
             verdicts={citationVerdicts}
           />

@@ -386,11 +386,11 @@ export async function POST(request: Request) {
         }
 
         // --- P1: in-context citation verification (PRD §03 / TDD §8) ---
-        // Awaiting result.steps blocks until the model has fully finished and
-        // the stream is drained — which is when provideCitations has executed
-        // and populated resolvedCitations. This MUST come before we read
-        // resolvedCitations: dataStream.merge() only wires the stream up, it
-        // doesn't drain it, so the tool hasn't run yet at this point.
+        // Awaiting result.steps blocks until the model has fully finished, which
+        // is when provideCitations has executed and populated resolvedCitations.
+        // This MUST come before we read resolvedCitations: dataStream.merge()
+        // drains the answer stream eagerly but asynchronously, so at this line
+        // the tool hasn't run yet — result.steps resolves only after it has.
         //
         // Concatenate text across ALL steps: result.text is only the *final*
         // step's text, which is empty here because the final step is the
@@ -428,6 +428,7 @@ export async function POST(request: Request) {
                 content: c.content,
                 contextWindow: neighborhood.contextWindow,
                 docTitle: c.docTitle,
+                marker: c.marker,
                 page: c.page,
               };
             }),
